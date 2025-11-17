@@ -1,0 +1,6 @@
+node_modules/
+public/script.js
+public/script.js.map
+*.log
+.DS_Store
+

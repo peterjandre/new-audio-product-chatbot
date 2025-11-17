@@ -1,0 +1,13 @@
+{
+  "name": "audio-products-chatbot-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for RAG-powered audio products chatbot",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}
+
