@@ -153,6 +153,80 @@ def _resolve_path(path_str: str, temp_dir: Path) -> Path:
         raise RuntimeError(error_msg) from e
 
 
+def _test_file_loading(file_type: str, file_path: Path) -> dict:
+    """
+    Test loading a single file with detailed error reporting.
+    
+    Returns dict with 'success', 'error', 'details' keys.
+    """
+    result = {
+        "success": False,
+        "error": None,
+        "details": {}
+    }
+    
+    try:
+        print(f"\n{'='*80}", file=sys.stderr, flush=True)
+        print(f"TESTING {file_type.upper()}: {file_path}", file=sys.stderr, flush=True)
+        print(f"{'='*80}", file=sys.stderr, flush=True)
+        
+        # Step 1: Check if file exists
+        print(f"Step 1: Checking if file exists...", file=sys.stderr, flush=True)
+        if not file_path.exists():
+            result["error"] = f"File does not exist: {file_path}"
+            result["details"]["exists"] = False
+            return result
+        result["details"]["exists"] = True
+        print(f"✓ File exists", file=sys.stderr, flush=True)
+        
+        # Step 2: Check file size
+        print(f"Step 2: Checking file size...", file=sys.stderr, flush=True)
+        file_size = file_path.stat().st_size
+        result["details"]["size_bytes"] = file_size
+        result["details"]["size_mb"] = file_size / (1024 * 1024)
+        print(f"✓ File size: {file_size} bytes ({result['details']['size_mb']:.2f} MB)", file=sys.stderr, flush=True)
+        
+        # Step 3: Try to read file based on type
+        if file_type == "index":
+            print(f"Step 3: Loading FAISS index...", file=sys.stderr, flush=True)
+            import faiss
+            index = faiss.read_index(str(file_path))
+            result["details"]["index_ntotal"] = index.ntotal
+            result["details"]["index_dimension"] = index.d
+            print(f"✓ FAISS index loaded: {index.ntotal} vectors, dimension {index.d}", file=sys.stderr, flush=True)
+            
+        elif file_type == "metadata":
+            print(f"Step 3: Loading JSON metadata...", file=sys.stderr, flush=True)
+            import json
+            with file_path.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+            result["details"]["metadata_count"] = len(metadata) if isinstance(metadata, list) else "not a list"
+            result["details"]["metadata_type"] = type(metadata).__name__
+            print(f"✓ Metadata loaded: {result['details']['metadata_count']} entries", file=sys.stderr, flush=True)
+            
+        elif file_type == "corpus":
+            print(f"Step 3: Loading JSON corpus...", file=sys.stderr, flush=True)
+            import json
+            with file_path.open("r", encoding="utf-8") as f:
+                corpus = json.load(f)
+            result["details"]["corpus_count"] = len(corpus) if isinstance(corpus, list) else "not a list"
+            result["details"]["corpus_type"] = type(corpus).__name__
+            if isinstance(corpus, list) and len(corpus) > 0:
+                result["details"]["first_entry_keys"] = list(corpus[0].keys()) if isinstance(corpus[0], dict) else "not a dict"
+            print(f"✓ Corpus loaded: {result['details']['corpus_count']} entries", file=sys.stderr, flush=True)
+        
+        result["success"] = True
+        print(f"✓ {file_type.upper()} file test PASSED", file=sys.stderr, flush=True)
+        
+    except Exception as e:
+        result["error"] = str(e)
+        print(f"✗ {file_type.upper()} file test FAILED: {e}", file=sys.stderr, flush=True)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+    
+    return result
+
+
 def _initialize_rag_engine():
     """Initialize the RAG engine lazily (called on first request)."""
     global rag_engine, _rag_engine_lock, _rag_engine_error, _temp_dir
@@ -178,7 +252,9 @@ def _initialize_rag_engine():
     _rag_engine_lock = True
     
     try:
+        print("\n" + "="*80, file=sys.stderr, flush=True)
         print("Initializing RAG engine (lazy load)...", file=sys.stderr, flush=True)
+        print("="*80, file=sys.stderr, flush=True)
         
         # Create temporary directory for downloaded files (if using Supabase URLs)
         if _temp_dir is None:
@@ -201,42 +277,92 @@ def _initialize_rag_engine():
         if not corpus_path_env:
             corpus_path_env = str(base_dir / "data" / "gearspace_corpus.json")
         
-        # Resolve paths (download if URLs, use local if paths)
-        index_path = _resolve_path(index_path_env, temp_dir_path)
+        # TEST EACH FILE INDIVIDUALLY
+        print("\n" + "="*80, file=sys.stderr, flush=True)
+        print("TESTING DATA FILES INDIVIDUALLY", file=sys.stderr, flush=True)
+        print("="*80, file=sys.stderr, flush=True)
         
-        if index_path is None or not index_path.exists():
-            raise FileNotFoundError(f"FAISS index file not found at {index_path_env}")
+        # Test 1: Resolve and test index file
+        print("\n[TEST 1] Testing FAISS index file...", file=sys.stderr, flush=True)
+        index_path = None
+        try:
+            index_path = _resolve_path(index_path_env, temp_dir_path)
+            if index_path is None or not index_path.exists():
+                raise FileNotFoundError(f"FAISS index file not found at {index_path_env}")
+            index_test = _test_file_loading("index", index_path)
+            if not index_test["success"]:
+                raise RuntimeError(f"Index file test failed: {index_test['error']}")
+        except Exception as e:
+            error_msg = f"Failed to load index file: {e}"
+            print(f"✗ {error_msg}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            _rag_engine_error = error_msg
+            raise RuntimeError(error_msg) from e
         
-        # Resolve metadata path
+        # Test 2: Resolve and test metadata file
+        print("\n[TEST 2] Testing metadata file...", file=sys.stderr, flush=True)
         metadata_path = None
-        if metadata_path_env:
-            metadata_path = _resolve_path(metadata_path_env, temp_dir_path)
-        else:
-            # Auto-detect metadata from index path
-            auto_metadata = index_path.parent / f"{index_path.stem}_metadata.json"
-            if auto_metadata.exists():
-                metadata_path = auto_metadata
-            elif _is_url(index_path_env):
-                # Try constructing metadata URL
-                metadata_url = index_path_env.replace('.index', '_metadata.json')
-                try:
-                    metadata_path = _resolve_path(metadata_url, temp_dir_path)
-                except Exception as e:
-                    print(f"Warning: Could not auto-detect metadata: {e}", file=sys.stderr, flush=True)
+        try:
+            if metadata_path_env:
+                metadata_path = _resolve_path(metadata_path_env, temp_dir_path)
+            else:
+                # Auto-detect metadata from index path
+                auto_metadata = index_path.parent / f"{index_path.stem}_metadata.json"
+                if auto_metadata.exists():
+                    metadata_path = auto_metadata
+                elif _is_url(index_path_env):
+                    # Try constructing metadata URL
+                    metadata_url = index_path_env.replace('.index', '_metadata.json')
+                    try:
+                        metadata_path = _resolve_path(metadata_url, temp_dir_path)
+                    except Exception as e:
+                        print(f"Warning: Could not auto-detect metadata: {e}", file=sys.stderr, flush=True)
+            
+            if metadata_path:
+                metadata_test = _test_file_loading("metadata", metadata_path)
+                if not metadata_test["success"]:
+                    raise RuntimeError(f"Metadata file test failed: {metadata_test['error']}")
+        except Exception as e:
+            error_msg = f"Failed to load metadata file: {e}"
+            print(f"✗ {error_msg}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            _rag_engine_error = error_msg
+            raise RuntimeError(error_msg) from e
         
-        # Resolve corpus path
+        # Test 3: Resolve and test corpus file (optional)
+        print("\n[TEST 3] Testing corpus file (optional)...", file=sys.stderr, flush=True)
         corpus_path = None
-        if corpus_path_env:
-            corpus_path = _resolve_path(corpus_path_env, temp_dir_path)
+        try:
+            if corpus_path_env:
+                corpus_path = _resolve_path(corpus_path_env, temp_dir_path)
+                if corpus_path:
+                    corpus_test = _test_file_loading("corpus", corpus_path)
+                    if not corpus_test["success"]:
+                        print(f"Warning: Corpus file test failed (continuing anyway): {corpus_test['error']}", file=sys.stderr, flush=True)
+                        corpus_path = None  # Make it optional
+        except Exception as e:
+            print(f"Warning: Failed to load corpus file (continuing anyway): {e}", file=sys.stderr, flush=True)
+            corpus_path = None  # Make it optional
         
         # Check OpenAI API key
+        print("\n[TEST 4] Checking OpenAI API key...", file=sys.stderr, flush=True)
         openai_key = os.getenv("OPENAI_API_KEY")
         if not openai_key:
-            raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+            error_msg = "OPENAI_API_KEY environment variable is not set"
+            print(f"✗ {error_msg}", file=sys.stderr, flush=True)
+            _rag_engine_error = error_msg
+            raise RuntimeError(error_msg)
+        print(f"✓ OpenAI API key found", file=sys.stderr, flush=True)
         
         openai_model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         
-        # Initialize RAG engine
+        # Initialize RAG engine (all files tested successfully)
+        print("\n" + "="*80, file=sys.stderr, flush=True)
+        print("All file tests passed. Initializing RAG engine...", file=sys.stderr, flush=True)
+        print("="*80, file=sys.stderr, flush=True)
+        
         rag_engine = RAGEngine(
             index_path=str(index_path),
             metadata_path=str(metadata_path) if metadata_path else None,
@@ -248,8 +374,10 @@ def _initialize_rag_engine():
         
     except Exception as e:
         error_msg = f"Error initializing RAG engine: {e}"
+        print("\n" + "="*80, file=sys.stderr, flush=True)
         print("ERROR:", file=sys.stderr, flush=True)
         print(error_msg, file=sys.stderr, flush=True)
+        print("="*80, file=sys.stderr, flush=True)
         import traceback
         traceback.print_exc(file=sys.stderr)
         _rag_engine_error = str(e)
@@ -303,6 +431,71 @@ async def api_info():
         "docs": "/docs",
         "health": "/health",
     }
+
+
+@app.get("/test-files", tags=["Debug"])
+async def test_files():
+    """
+    Test endpoint to check each data file individually.
+    Useful for debugging which file is causing issues.
+    """
+    results = {
+        "index": None,
+        "metadata": None,
+        "corpus": None,
+        "openai_key": None,
+    }
+    
+    base_dir = Path(__file__).parent
+    
+    # Create temp directory
+    if _temp_dir is None:
+        global _temp_dir
+        _temp_dir = tempfile.TemporaryDirectory()
+    temp_dir_path = Path(_temp_dir.name)
+    
+    # Test index file
+    try:
+        index_path_env = os.getenv("FAISS_INDEX_URL") or os.getenv("FAISS_INDEX_PATH")
+        if not index_path_env:
+            index_path_env = str(base_dir / "data" / "faiss_index.index")
+        index_path = _resolve_path(index_path_env, temp_dir_path)
+        if index_path:
+            results["index"] = _test_file_loading("index", index_path)
+    except Exception as e:
+        results["index"] = {"success": False, "error": str(e), "details": {}}
+    
+    # Test metadata file
+    try:
+        metadata_path_env = os.getenv("FAISS_METADATA_URL") or os.getenv("FAISS_METADATA_PATH")
+        if not metadata_path_env:
+            metadata_path_env = str(base_dir / "data" / "faiss_index_metadata.json")
+        metadata_path = _resolve_path(metadata_path_env, temp_dir_path)
+        if metadata_path:
+            results["metadata"] = _test_file_loading("metadata", metadata_path)
+    except Exception as e:
+        results["metadata"] = {"success": False, "error": str(e), "details": {}}
+    
+    # Test corpus file
+    try:
+        corpus_path_env = os.getenv("CORPUS_URL") or os.getenv("CORPUS_PATH")
+        if not corpus_path_env:
+            corpus_path_env = str(base_dir / "data" / "gearspace_corpus.json")
+        corpus_path = _resolve_path(corpus_path_env, temp_dir_path)
+        if corpus_path:
+            results["corpus"] = _test_file_loading("corpus", corpus_path)
+    except Exception as e:
+        results["corpus"] = {"success": False, "error": str(e), "details": {}}
+    
+    # Test OpenAI key
+    openai_key = os.getenv("OPENAI_API_KEY")
+    results["openai_key"] = {
+        "success": openai_key is not None,
+        "error": None if openai_key else "OPENAI_API_KEY not set",
+        "details": {"key_length": len(openai_key) if openai_key else 0}
+    }
+    
+    return results
 
 
 @app.get("/health", response_model=HealthResponse, tags=["General"])
