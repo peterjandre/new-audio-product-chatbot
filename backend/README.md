@@ -51,8 +51,6 @@ vercel
    - Upload `data/faiss_index_metadata.json` (if exists)
    - Upload `data/gearspace_corpus.json`
 
-Note: Vercel has a 50MB limit for serverless functions. If your data files exceed this, consider using external storage (S3, etc.) and downloading them at runtime.
-
 ## API Endpoints
 
 - `GET /` - API information
