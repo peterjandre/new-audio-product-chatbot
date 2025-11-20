@@ -1,0 +1,49 @@
+# Exclude frontend directory
+../frontend/
+
+# Exclude root-level files
+../README.md
+../DEPLOYMENT.md
+../data/
+
+# Exclude Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+env/
+
+# Exclude large data files (should be in Supabase Storage)
+data/*.index
+data/*.json
+
+# Exclude test files
+test_local.sh
+
+# Exclude IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Exclude logs
+*.log
+logs/
+
+# Exclude environment files
+.env
+.env.local
+.env.*.local
+*.env
+
