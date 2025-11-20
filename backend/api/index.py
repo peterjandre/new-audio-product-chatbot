@@ -1,45 +1,52 @@
 """
 Vercel serverless function wrapper for FastAPI app.
-Minimal version for testing.
 """
-# Log immediately using only built-ins - before any imports
-print(">>> [VERCEL] MODULE LOADING STARTED - LINE 5 <<<", file=__import__('sys').stderr, flush=True)
-print(">>> [VERCEL] MODULE LOADING STARTED - LINE 5 <<<", file=__import__('sys').stdout, flush=True)
+# CRITICAL: Create a minimal handler FIRST before any imports that might fail
+# This ensures Vercel can always import the module and find a handler
+handler = None
 
+# Try to create fallback handler immediately - wrap in try/except to ensure module loads
+try:
+    from fastapi import FastAPI
+    from mangum import Mangum
+    _fallback_app = FastAPI()
+    @_fallback_app.get("/{path:path}")
+    @_fallback_app.post("/{path:path}")
+    async def _fallback_handler():
+        return {"status": "initializing", "message": "Check logs for initialization status"}
+    handler = Mangum(_fallback_app)
+except Exception as e:
+    # If we can't even create fallback, handler stays None but module still loads
+    import sys
+    print(f"WARNING: Could not create fallback handler: {e}", file=sys.stderr, flush=True)
+    handler = None
+
+# Now do imports - if these fail, handler stays None but module still loads
 import sys
 import traceback
-from pathlib import Path
 
 def log(msg):
     """Log to stderr (captured by Vercel function logs)"""
     print(msg, file=sys.stderr, flush=True)
-    # Also log to stdout as backup
     print(msg, file=sys.stdout, flush=True)
 
-# Log again after imports
-log(">>> MODULE LOADING - AFTER IMPORTS <<<")
-
-# Store initialization error if any
-_init_error = None
-handler = None
+# Log immediately
+log("=" * 80)
+log(">>> MODULE LOADING STARTED <<<")
+log("=" * 80)
 
 try:
-    log("=" * 80)
-    log("Starting api/index.py - Minimal Test Version")
-    log("=" * 80)
-
-    # Check Python version
     log(f"Python version: {sys.version}")
-
-    # Check only essential dependencies for minimal app
-    log("\nChecking essential dependencies...")
+    
+    # Check dependencies
+    log("\nChecking dependencies...")
     try:
         import fastapi
         log(f"✓ fastapi - version: {fastapi.__version__}")
     except ImportError as e:
         log(f"✗ fastapi - MISSING: {e}")
         raise
-
+    
     try:
         import mangum
         version = getattr(mangum, '__version__', 'unknown')
@@ -47,23 +54,22 @@ try:
     except ImportError as e:
         log(f"✗ mangum - MISSING: {e}")
         raise
-
-    log("=" * 80)
-
-    # Add parent directory to path to import app
+    
+    # Add backend directory to path
+    from pathlib import Path
     backend_dir = Path(__file__).parent.parent
-    log(f"Backend directory: {backend_dir}")
+    log(f"\nBackend directory: {backend_dir}")
     log(f"Backend directory exists: {backend_dir.exists()}")
-
+    
     if str(backend_dir) not in sys.path:
         sys.path.insert(0, str(backend_dir))
         log(f"Added {backend_dir} to Python path")
-
+    
     # Try importing app
     log("\n" + "=" * 80)
     log("Importing app...")
     log("=" * 80)
-
+    
     try:
         from app import app
         log("✓ Successfully imported app")
@@ -72,12 +78,12 @@ try:
         log(f"✗ Failed to import app: {e}")
         traceback.print_exc(file=sys.stderr)
         raise
-
+    
     # Create Mangum handler
     log("\n" + "=" * 80)
     log("Creating Mangum handler...")
     log("=" * 80)
-
+    
     try:
         from mangum import Mangum
         handler = Mangum(app)
@@ -92,9 +98,8 @@ try:
         raise
 
 except Exception as e:
-    _init_error = e
     log("\n" + "=" * 80)
-    log("FATAL ERROR during module initialization:")
+    log("ERROR during module initialization:")
     log("=" * 80)
     log(f"Error type: {type(e).__name__}")
     log(f"Error message: {str(e)}")
@@ -103,31 +108,50 @@ except Exception as e:
     traceback.print_exc(file=sys.stdout)
     log("=" * 80)
     
-    # Try to create a dummy handler that will return an error response
-    # This ensures the module loads successfully so we can see the logs
+    # Create a fallback handler so module still works
     try:
-        from mangum import Mangum
         from fastapi import FastAPI
+        from mangum import Mangum
         
         error_app = FastAPI()
         
         @error_app.get("/{path:path}")
         @error_app.post("/{path:path}")
-        @error_app.put("/{path:path}")
-        @error_app.delete("/{path:path}")
         async def error_handler():
             return {
                 "error": "Module initialization failed",
-                "error_type": type(_init_error).__name__,
-                "error_message": str(_init_error)
+                "error_type": type(e).__name__,
+                "error_message": str(e)
             }
         
         handler = Mangum(error_app)
-        log("Created error handler - module will load but requests will fail")
+        log("Created fallback error handler")
     except Exception as handler_error:
-        log(f"Could not create error handler: {handler_error}")
-        log("Module will fail to load, but logs should be visible above")
-        # Set handler to None - Vercel will fail but we'll have logs
-        handler = None
+        log(f"Could not create fallback handler: {handler_error}")
+        # handler stays None - Vercel will fail but we have logs
     
     log("=" * 80)
+
+# Ensure handler is always valid
+if handler is None:
+    log("CRITICAL: handler is None - trying to create emergency handler")
+    try:
+        from fastapi import FastAPI
+        from mangum import Mangum
+        emergency_app = FastAPI()
+        @emergency_app.get("/{path:path}")
+        @emergency_app.post("/{path:path}")
+        async def emergency_handler():
+            return {"error": "Handler initialization failed", "message": "Check logs"}
+        handler = Mangum(emergency_app)
+        if handler:
+            log("Created emergency fallback handler")
+        else:
+            log("FAILED to create emergency handler")
+    except Exception as e:
+        log(f"Exception creating emergency handler: {e}")
+
+if handler:
+    log(f"SUCCESS: handler is defined: {type(handler)}")
+else:
+    log("ERROR: handler is still None - Vercel deployment will fail")
