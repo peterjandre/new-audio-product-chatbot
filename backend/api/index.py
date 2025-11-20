@@ -28,7 +28,8 @@ except ImportError as e:
 
 try:
     import mangum
-    log(f"✓ mangum - version: {mangum.__version__}")
+    version = getattr(mangum, '__version__', 'unknown')
+    log(f"✓ mangum - version: {version}")
 except ImportError as e:
     log(f"✗ mangum - MISSING: {e}")
     sys.exit(1)
