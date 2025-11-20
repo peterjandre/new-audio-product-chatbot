@@ -57,13 +57,30 @@ try:
     
     # Add backend directory to path
     from pathlib import Path
-    backend_dir = Path(__file__).parent.parent
-    log(f"\nBackend directory: {backend_dir}")
+    import os
+    
+    # Get the backend directory - try multiple approaches for Vercel compatibility
+    current_file = Path(__file__).resolve()
+    backend_dir = current_file.parent.parent.resolve()
+    
+    # Also try getting from current working directory
+    cwd = Path(os.getcwd()).resolve()
+    log(f"\nCurrent working directory: {cwd}")
+    log(f"Current file: {current_file}")
+    log(f"Backend directory (from __file__): {backend_dir}")
     log(f"Backend directory exists: {backend_dir.exists()}")
     
-    if str(backend_dir) not in sys.path:
-        sys.path.insert(0, str(backend_dir))
-        log(f"Added {backend_dir} to Python path")
+    # Add both possible paths
+    paths_to_add = [str(backend_dir)]
+    if str(cwd) not in sys.path and cwd.exists():
+        paths_to_add.append(str(cwd))
+    
+    for path_str in paths_to_add:
+        if path_str not in sys.path:
+            sys.path.insert(0, path_str)
+            log(f"Added {path_str} to Python path")
+    
+    log(f"Python path: {sys.path[:5]}")  # Log first 5 entries
     
     # Try importing app
     log("\n" + "=" * 80)
@@ -153,5 +170,16 @@ if handler is None:
 
 if handler:
     log(f"SUCCESS: handler is defined: {type(handler)}")
+    # Verify handler is callable (required by Vercel)
+    if callable(handler):
+        log("✓ Handler is callable")
+    else:
+        log("✗ WARNING: Handler is not callable!")
 else:
     log("ERROR: handler is still None - Vercel deployment will fail")
+
+# CRITICAL: Ensure handler is exported and accessible to Vercel
+# Vercel looks for a 'handler' variable at module level
+# This must be the last line to ensure handler is always defined
+if handler is None:
+    raise RuntimeError("CRITICAL: Handler is None - Vercel deployment will fail. Check logs above for initialization errors.")
