@@ -439,6 +439,8 @@ async def test_files():
     Test endpoint to check each data file individually.
     Useful for debugging which file is causing issues.
     """
+    global _temp_dir
+    
     results = {
         "index": None,
         "metadata": None,
@@ -450,7 +452,6 @@ async def test_files():
     
     # Create temp directory
     if _temp_dir is None:
-        global _temp_dir
         _temp_dir = tempfile.TemporaryDirectory()
     temp_dir_path = Path(_temp_dir.name)
     
