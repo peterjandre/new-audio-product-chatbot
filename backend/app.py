@@ -56,8 +56,10 @@ class HealthResponse(BaseModel):
     generation_provider: Optional[str] = None
 
 
-# Global RAG engine instance (initialized on startup)
+# Global RAG engine instance (initialized lazily on first request)
 rag_engine: Optional[RAGEngine] = None
+_rag_engine_lock = False  # Simple lock to prevent concurrent initialization
+_rag_engine_error: Optional[str] = None  # Store initialization error
 
 # Temporary directory for downloaded files (cleaned up on shutdown)
 _temp_dir: Optional[tempfile.TemporaryDirectory] = None
@@ -151,28 +153,40 @@ def _resolve_path(path_str: str, temp_dir: Path) -> Path:
         raise RuntimeError(error_msg) from e
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan event handler for startup and shutdown."""
-    global rag_engine, _temp_dir
+def _initialize_rag_engine():
+    """Initialize the RAG engine lazily (called on first request)."""
+    global rag_engine, _rag_engine_lock, _rag_engine_error, _temp_dir
     
-    # Startup
+    # If already initialized, return
+    if rag_engine is not None:
+        return
+    
+    # If initialization failed before, raise error
+    if _rag_engine_error:
+        raise RuntimeError(f"RAG engine initialization failed: {_rag_engine_error}")
+    
+    # If currently initializing, wait a bit (simple lock)
+    if _rag_engine_lock:
+        import time
+        time.sleep(0.1)
+        if rag_engine is not None:
+            return
+        if _rag_engine_error:
+            raise RuntimeError(f"RAG engine initialization failed: {_rag_engine_error}")
+    
+    # Set lock
+    _rag_engine_lock = True
+    
     try:
-        print("=" * 80, flush=True)
-        print("Starting RAG engine initialization...", flush=True)
-        print("=" * 80, flush=True)
+        print("Initializing RAG engine (lazy load)...", file=sys.stderr, flush=True)
         
         # Create temporary directory for downloaded files (if using Supabase URLs)
-        _temp_dir = tempfile.TemporaryDirectory()
+        if _temp_dir is None:
+            _temp_dir = tempfile.TemporaryDirectory()
         temp_dir_path = Path(_temp_dir.name)
-        print(f"Created temporary directory: {temp_dir_path}", flush=True)
-        print(f"Temp directory exists: {temp_dir_path.exists()}", flush=True)
-        print(f"Temp directory writable: {os.access(temp_dir_path, os.W_OK)}", flush=True)
         
         # Get configuration from environment variables
-        # Support both local paths and Supabase URLs
         base_dir = Path(__file__).parent
-        print(f"Base directory: {base_dir}", flush=True)
         
         # Check for Supabase URLs first, then fall back to local paths
         index_path_env = os.getenv("FAISS_INDEX_URL") or os.getenv("FAISS_INDEX_PATH")
@@ -187,73 +201,42 @@ async def lifespan(app: FastAPI):
         if not corpus_path_env:
             corpus_path_env = str(base_dir / "data" / "gearspace_corpus.json")
         
-        print(f"Environment variables:", flush=True)
-        print(f"  FAISS_INDEX_URL: {os.getenv('FAISS_INDEX_URL', 'not set')}", flush=True)
-        print(f"  FAISS_INDEX_PATH: {os.getenv('FAISS_INDEX_PATH', 'not set')}", flush=True)
-        print(f"  Index path to use: {index_path_env}", flush=True)
-        print(f"  Metadata path to use: {metadata_path_env}", flush=True)
-        print(f"  Corpus path to use: {corpus_path_env}", flush=True)
-        
         # Resolve paths (download if URLs, use local if paths)
-        print("\nStep 1: Resolving index path...", flush=True)
         index_path = _resolve_path(index_path_env, temp_dir_path)
         
-        if index_path is None:
-            raise FileNotFoundError(f"FAISS index path is None (from: {index_path_env})")
-        if not index_path.exists():
-            raise FileNotFoundError(f"FAISS index file not found at {index_path} (resolved from: {index_path_env})")
+        if index_path is None or not index_path.exists():
+            raise FileNotFoundError(f"FAISS index file not found at {index_path_env}")
         
-        print(f"✓ Index path resolved: {index_path} ({index_path.stat().st_size} bytes)", flush=True)
-        
-        # Resolve metadata path (auto-detect if not provided and using URL)
-        print("\nStep 2: Resolving metadata path...", flush=True)
+        # Resolve metadata path
         metadata_path = None
         if metadata_path_env:
             metadata_path = _resolve_path(metadata_path_env, temp_dir_path)
-            if metadata_path and metadata_path.exists():
-                print(f"✓ Metadata path resolved: {metadata_path} ({metadata_path.stat().st_size} bytes)", flush=True)
         else:
             # Auto-detect metadata from index path
             auto_metadata = index_path.parent / f"{index_path.stem}_metadata.json"
             if auto_metadata.exists():
                 metadata_path = auto_metadata
-                print(f"✓ Auto-detected metadata: {metadata_path}", flush=True)
-            else:
-                # If index was downloaded from URL, try downloading metadata with similar name
-                if _is_url(index_path_env):
-                    # Try constructing metadata URL
-                    metadata_url = index_path_env.replace('.index', '_metadata.json')
-                    try:
-                        metadata_path = _resolve_path(metadata_url, temp_dir_path)
-                        if metadata_path and metadata_path.exists():
-                            print(f"✓ Auto-downloaded metadata: {metadata_path}", flush=True)
-                    except Exception as e:
-                        print(f"⚠ Warning: Could not auto-detect metadata file: {e}", flush=True)
+            elif _is_url(index_path_env):
+                # Try constructing metadata URL
+                metadata_url = index_path_env.replace('.index', '_metadata.json')
+                try:
+                    metadata_path = _resolve_path(metadata_url, temp_dir_path)
+                except Exception as e:
+                    print(f"Warning: Could not auto-detect metadata: {e}", file=sys.stderr, flush=True)
         
         # Resolve corpus path
-        print("\nStep 3: Resolving corpus path...", flush=True)
         corpus_path = None
         if corpus_path_env:
             corpus_path = _resolve_path(corpus_path_env, temp_dir_path)
-            if corpus_path and corpus_path.exists():
-                print(f"✓ Corpus path resolved: {corpus_path} ({corpus_path.stat().st_size} bytes)", flush=True)
         
         # Check OpenAI API key
-        print("\nStep 4: Checking OpenAI API key...", flush=True)
         openai_key = os.getenv("OPENAI_API_KEY")
         if not openai_key:
             raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-        print(f"✓ OpenAI API key found (length: {len(openai_key)})", flush=True)
         
         openai_model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        print(f"  Using model: {openai_model}", flush=True)
         
         # Initialize RAG engine
-        print("\nStep 5: Initializing RAG engine...", flush=True)
-        print(f"  Index path: {index_path}", flush=True)
-        print(f"  Metadata path: {metadata_path}", flush=True)
-        print(f"  Corpus path: {corpus_path}", flush=True)
-        
         rag_engine = RAGEngine(
             index_path=str(index_path),
             metadata_path=str(metadata_path) if metadata_path else None,
@@ -261,28 +244,35 @@ async def lifespan(app: FastAPI):
             openai_model=openai_model,
         )
         
-        print("=" * 80, flush=True)
-        print("✓ RAG engine initialized successfully!", flush=True)
-        print("=" * 80, flush=True)
+        print("✓ RAG engine initialized successfully!", file=sys.stderr, flush=True)
         
     except Exception as e:
         error_msg = f"Error initializing RAG engine: {e}"
-        print("\n" + "=" * 80, file=sys.stderr, flush=True)
         print("ERROR:", file=sys.stderr, flush=True)
         print(error_msg, file=sys.stderr, flush=True)
-        print("=" * 80, file=sys.stderr, flush=True)
         import traceback
         traceback.print_exc(file=sys.stderr)
-        # Don't re-raise, let the error propagate naturally
+        _rag_engine_error = str(e)
         raise RuntimeError(error_msg) from e
+    finally:
+        _rag_engine_lock = False
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan event handler for startup and shutdown."""
+    global _temp_dir
+    
+    # Startup - minimal initialization (RAG engine will be initialized lazily on first request)
+    print("FastAPI app starting...", file=sys.stderr, flush=True)
     
     yield
     
     # Shutdown - clean up temporary directory
     if _temp_dir:
-        print("Cleaning up temporary files...")
+        print("Cleaning up temporary files...", file=sys.stderr, flush=True)
         _temp_dir.cleanup()
-    print("Shutting down...")
+    print("Shutting down...", file=sys.stderr, flush=True)
 
 
 # Initialize FastAPI app
@@ -318,10 +308,17 @@ async def api_info():
 @app.get("/health", response_model=HealthResponse, tags=["General"])
 async def health_check():
     """Health check endpoint."""
-    global rag_engine
+    global rag_engine, _rag_engine_error
     
+    # Try to initialize if not already done
     if rag_engine is None:
-        raise HTTPException(status_code=503, detail="RAG engine not initialized")
+        try:
+            _initialize_rag_engine()
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"RAG engine not available: {str(e)}"
+            )
     
     return HealthResponse(
         status="healthy",
@@ -343,8 +340,15 @@ async def query(request: QueryRequest):
     """
     global rag_engine
     
+    # Initialize RAG engine if not already done (lazy initialization)
     if rag_engine is None:
-        raise HTTPException(status_code=503, detail="RAG engine not initialized")
+        try:
+            _initialize_rag_engine()
+        except Exception as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"RAG engine not available: {str(e)}"
+            )
     
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
