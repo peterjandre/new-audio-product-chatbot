@@ -19,12 +19,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-# Add scripts directory to path for imports
-scripts_dir = Path(__file__).parent / "scripts"
-if str(scripts_dir) not in sys.path:
-    sys.path.insert(0, str(scripts_dir))
-
-from rag_engine import RAGEngine
+# Import from scripts package
+from scripts.rag_engine import RAGEngine
 
 
 # Pydantic models for request/response
