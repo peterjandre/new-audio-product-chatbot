@@ -14,8 +14,11 @@ try:
     import faiss
     import numpy as np
 except ImportError as e:
-    print(f"Error: Required packages not installed. Install with: pip install faiss-cpu numpy", file=sys.stderr)
-    sys.exit(1)
+    # Don't exit here - let the error be raised when FAISSIndex is instantiated
+    # This allows the module to be imported even if dependencies aren't available
+    faiss = None
+    np = None
+    _import_error = e
 
 
 class FAISSIndex:
@@ -32,6 +35,13 @@ class FAISSIndex:
         metadata_path:
             Path to metadata JSON file (default: index_path with _metadata.json)
         """
+        # Check if dependencies are available
+        if faiss is None or np is None:
+            error_msg = "Required packages not installed. Install with: pip install faiss-cpu numpy"
+            if '_import_error' in globals():
+                error_msg += f". Original error: {_import_error}"
+            raise ImportError(error_msg)
+        
         index_path = Path(index_path)
         if not index_path.exists():
             raise FileNotFoundError(f"FAISS index not found at {index_path}")

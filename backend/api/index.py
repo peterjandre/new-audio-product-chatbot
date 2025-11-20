@@ -1,7 +1,6 @@
 """
 Vercel serverless function wrapper for FastAPI app.
 """
-from mangum import Mangum
 import sys
 import os
 from pathlib import Path
@@ -41,6 +40,15 @@ try:
     print("✓ fastapi imported", flush=True)
 except Exception as e:
     print(f"✗ Error importing fastapi: {e}", file=sys.stderr, flush=True)
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+    raise
+
+try:
+    from mangum import Mangum
+    print("✓ mangum imported", flush=True)
+except Exception as e:
+    print(f"✗ Error importing mangum: {e}", file=sys.stderr, flush=True)
     import traceback
     traceback.print_exc(file=sys.stderr)
     raise
