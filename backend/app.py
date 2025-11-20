@@ -53,7 +53,8 @@ class HealthResponse(BaseModel):
 
 
 # Global RAG engine instance (initialized lazily on first request)
-rag_engine: Optional[RAGEngine] = None
+#rag_engine: Optional[RAGEngine] = None
+rag_engine = None
 _rag_engine_lock = False  # Simple lock to prevent concurrent initialization
 _rag_engine_error: Optional[str] = None  # Store initialization error
 
