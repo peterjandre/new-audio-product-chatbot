@@ -1,6 +1,8 @@
 requests>=2.32.0
 openai>=1.0.0
-faiss-cpu>=1.7.4
+# DIAGNOSTIC: Temporarily removed faiss-cpu to test if it's causing build failures
+# If build succeeds without it, then faiss-cpu is the problem
+# faiss-cpu>=1.7.4
 numpy>=1.24.0
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0

@@ -1,6 +1,0 @@
-[project]
-requires-python = ">=3.9,<3.10"
-
-[build-system]
-requires = ["setuptools"]
-
