@@ -1,0 +1,8 @@
+[project]
+name = "audio-products-chatbot-api"
+version = "0.1.0"
+description = "RAG-powered API for querying information about audio production gear"
+requires-python = ">=3.11,<3.12"
+# Dependencies are managed via requirements.txt
+dependencies = []
+
