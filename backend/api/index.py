@@ -1,5 +1,11 @@
+# Test if file is being executed at all
+print("FILE IS BEING EXECUTED", flush=True)
+import sys
+sys.stderr.write("STDERR: FILE IS BEING EXECUTED\n")
+sys.stderr.flush()
+
 """
-Absolute minimal FastAPI handler for Vercel - everything in one file.
+Absolute minimal FastAPI handler for Vercel - no Mangum.
 """
 
 import sys
@@ -16,10 +22,6 @@ try:
     log("Importing FastAPI...")
     from fastapi import FastAPI
     log("✓ FastAPI imported")
-    
-    log("Importing Mangum...")
-    from mangum import Mangum
-    log("✓ Mangum imported")
     
     log("Creating FastAPI app...")
     app = FastAPI(
@@ -39,12 +41,9 @@ try:
         return {"status": "healthy", "message": "FastAPI is running successfully"}
     log("✓ Routes defined")
     
-    log("Creating Mangum handler...")
-    handler = Mangum(app)
-    log("✓ Mangum handler created")
-    log(f"Handler type: {type(handler)}")
-    log(f"Handler is callable: {callable(handler)}")
-    
+    # Vercel's @vercel/python should handle FastAPI apps automatically
+    # If it needs a handler, we'll add one, but try without first
+    log("✓ App ready for Vercel")
     log("=" * 80)
     log("Module loaded successfully!")
     log("=" * 80)
@@ -59,8 +58,3 @@ except Exception as e:
     traceback.print_exc(file=sys.stdout)
     log("=" * 80)
     raise
-
-# Ensure handler exists
-if 'handler' not in globals():
-    log("CRITICAL: handler not defined!")
-    raise RuntimeError("Handler not defined")
