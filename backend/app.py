@@ -406,24 +406,36 @@ async def lifespan(app: FastAPI):
 
 
 # Initialize FastAPI app
-# Note: In serverless environments, lifespan handlers may not work as expected
-# If you encounter issues, try removing the lifespan parameter
-try:
-    app = FastAPI(
-        title="Audio Products Chatbot API",
-        description="RAG-powered API for querying information about audio production gear",
-        version="1.0.0",
-        lifespan=lifespan,
-    )
-except Exception as e:
-    # Fallback: create app without lifespan if it fails
-    print(f"Warning: Failed to create app with lifespan: {e}", file=sys.stderr, flush=True)
-    print("Creating app without lifespan handler...", file=sys.stderr, flush=True)
+# Note: In serverless environments (like Vercel), lifespan handlers may not work as expected
+# Detect if we're running in a serverless environment and skip lifespan if so
+_IS_SERVERLESS = os.getenv("VERCEL") is not None or os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+
+if _IS_SERVERLESS:
+    # Serverless environment - don't use lifespan handler (Mangum doesn't support it well)
+    print("Running in serverless environment - skipping lifespan handler", file=sys.stderr, flush=True)
     app = FastAPI(
         title="Audio Products Chatbot API",
         description="RAG-powered API for querying information about audio production gear",
         version="1.0.0",
     )
+else:
+    # Local/regular environment - use lifespan handler
+    try:
+        app = FastAPI(
+            title="Audio Products Chatbot API",
+            description="RAG-powered API for querying information about audio production gear",
+            version="1.0.0",
+            lifespan=lifespan,
+        )
+    except Exception as e:
+        # Fallback: create app without lifespan if it fails
+        print(f"Warning: Failed to create app with lifespan: {e}", file=sys.stderr, flush=True)
+        print("Creating app without lifespan handler...", file=sys.stderr, flush=True)
+        app = FastAPI(
+            title="Audio Products Chatbot API",
+            description="RAG-powered API for querying information about audio production gear",
+            version="1.0.0",
+        )
 
 # Configure CORS
 app.add_middleware(

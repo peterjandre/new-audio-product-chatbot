@@ -87,32 +87,71 @@ try:
     log("Importing app...")
     log("=" * 80)
     
+    app_to_use = None
     try:
-        from app import app
+        from app import app as imported_app
         log("✓ Successfully imported app")
-        log(f"App type: {type(app)}")
+        log(f"App type: {type(imported_app)}")
+        app_to_use = imported_app
     except Exception as e:
         log(f"✗ Failed to import app: {e}")
+        log("Will use fallback handler")
         traceback.print_exc(file=sys.stderr)
-        raise
+        # Don't raise - we'll use fallback handler below
     
     # Create Mangum handler
     log("\n" + "=" * 80)
     log("Creating Mangum handler...")
     log("=" * 80)
     
-    try:
-        from mangum import Mangum
-        handler = Mangum(app)
-        log("✓ Mangum handler created successfully")
-        log(f"Handler type: {type(handler)}")
-        log("=" * 80)
-        log("Module initialization complete!")
-        log("=" * 80)
-    except Exception as e:
-        log(f"✗ Failed to create Mangum handler: {e}")
-        traceback.print_exc(file=sys.stderr)
-        raise
+    if app_to_use is not None:
+        try:
+            from mangum import Mangum
+            handler = Mangum(app_to_use)
+            log("✓ Mangum handler created successfully")
+            log(f"Handler type: {type(handler)}")
+            log("=" * 80)
+            log("Module initialization complete!")
+            log("=" * 80)
+        except Exception as e:
+            log(f"✗ Failed to create Mangum handler: {e}")
+            log("Will use fallback handler")
+            traceback.print_exc(file=sys.stderr)
+            # Create a fallback handler for this specific error
+            try:
+                from mangum import Mangum
+                error_app = FastAPI()
+                @error_app.get("/{path:path}")
+                @error_app.post("/{path:path}")
+                async def mangum_error_handler():
+                    return {
+                        "error": "Failed to create Mangum handler",
+                        "error_message": str(e),
+                        "status": "Please check logs"
+                    }
+                handler = Mangum(error_app)
+                log("Created Mangum error fallback handler")
+            except Exception as fallback_error:
+                log(f"Could not create Mangum fallback handler: {fallback_error}")
+                handler = None
+    else:
+        log("No app to wrap - will use fallback handler")
+        # Create a fallback handler for import failure
+        try:
+            from mangum import Mangum
+            import_error_app = FastAPI()
+            @import_error_app.get("/{path:path}")
+            @import_error_app.post("/{path:path}")
+            async def import_error_handler():
+                return {
+                    "error": "Failed to import app module",
+                    "status": "Please check logs for details"
+                }
+            handler = Mangum(import_error_app)
+            log("Created import error fallback handler")
+        except Exception as fallback_error:
+            log(f"Could not create import error fallback handler: {fallback_error}")
+            handler = None
 
 except Exception as e:
     log("\n" + "=" * 80)
@@ -182,4 +221,23 @@ else:
 # Vercel looks for a 'handler' variable at module level
 # This must be the last line to ensure handler is always defined
 if handler is None:
-    raise RuntimeError("CRITICAL: Handler is None - Vercel deployment will fail. Check logs above for initialization errors.")
+    # Last resort: try to create the absolute minimal handler
+    log("CRITICAL: Handler is None - attempting to create minimal emergency handler")
+    try:
+        from fastapi import FastAPI
+        from mangum import Mangum
+        minimal_app = FastAPI()
+        @minimal_app.get("/{path:path}")
+        @minimal_app.post("/{path:path}")
+        async def minimal_handler():
+            return {
+                "error": "Critical handler initialization failure",
+                "message": "Please check Vercel function logs for detailed error information"
+            }
+        handler = Mangum(minimal_app)
+        log("Created minimal emergency handler as last resort")
+    except Exception as final_error:
+        log(f"FATAL: Could not create even minimal handler: {final_error}")
+        # At this point, we have no choice but to fail
+        # But at least we've logged everything possible
+        raise RuntimeError(f"CRITICAL: Handler is None and could not create fallback. Last error: {final_error}. Check logs above for initialization errors.")
