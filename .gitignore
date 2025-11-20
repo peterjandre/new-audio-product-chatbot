@@ -46,3 +46,6 @@ backend/data/*.index
 *.log
 logs/
 
+# Local test scripts
+backend/test_local.sh
+

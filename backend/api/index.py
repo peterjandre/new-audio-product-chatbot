@@ -1,20 +1,16 @@
 """
-Minimal Vercel serverless function for testing deployment.
+Vercel serverless function wrapper for FastAPI app.
 """
 from mangum import Mangum
-from fastapi import FastAPI
+import sys
+from pathlib import Path
 
-# Create minimal FastAPI app
-app = FastAPI(title="Minimal Test API")
+# Add parent directory to path to import app
+backend_dir = Path(__file__).parent.parent
+if str(backend_dir) not in sys.path:
+    sys.path.insert(0, str(backend_dir))
 
-@app.get("/")
-async def root():
-    return {"message": "Hello from Vercel!", "status": "ok"}
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}
+from app import app
 
 # Create Mangum handler for Vercel
-handler = Mangum(app, lifespan="off")
-
+handler = Mangum(app)
