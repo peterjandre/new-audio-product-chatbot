@@ -256,7 +256,7 @@ def _initialize_rag_engine():
         print("Initializing RAG engine (lazy load)...", file=sys.stderr, flush=True)
         print("="*80, file=sys.stderr, flush=True)
         
-        # Create temporary directory for downloaded files (if using Supabase URLs)
+        # Create temporary directory for downloaded files (if using URLs)
         if _temp_dir is None:
             _temp_dir = tempfile.TemporaryDirectory()
         temp_dir_path = Path(_temp_dir.name)
@@ -264,7 +264,7 @@ def _initialize_rag_engine():
         # Get configuration from environment variables
         base_dir = Path(__file__).parent
         
-        # Check for Supabase URLs first, then fall back to local paths
+        # Check for URLs first, then fall back to local paths
         index_path_env = os.getenv("FAISS_INDEX_URL") or os.getenv("FAISS_INDEX_PATH")
         if not index_path_env:
             index_path_env = str(base_dir / "data" / "faiss_index.index")
