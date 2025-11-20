@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI):
             if not Path(metadata_path).exists():
                 metadata_path = None
         corpus_path = os.getenv("CORPUS_PATH", str(base_dir / "data" / "gearspace_corpus.json"))
+        
         openai_model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         
         print("Initializing RAG engine...")

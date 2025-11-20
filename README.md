@@ -16,12 +16,11 @@ This project is split into two separate applications for deployment:
 │   └── vercel.json  # Vercel configuration
 │
 ├── frontend/        # TypeScript frontend
-│   ├── src/         # TypeScript source files
-│   ├── public/      # Static files (HTML, CSS, compiled JS)
-│   ├── package.json # Node.js dependencies
-│   └── vercel.json  # Vercel configuration
-│
-└── data/            # Original data files (for reference)
+    ├── src/         # TypeScript source files
+    ├── public/      # Static files (HTML, CSS, compiled JS)
+    ├── package.json # Node.js dependencies
+    └── vercel.json  # Vercel configuration
+
 ```
 
 ## Quick Start
