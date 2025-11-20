@@ -2,6 +2,10 @@
 Vercel serverless function wrapper for FastAPI app.
 Minimal version for testing.
 """
+# Log immediately using only built-ins - before any imports
+print(">>> [VERCEL] MODULE LOADING STARTED - LINE 5 <<<", file=__import__('sys').stderr, flush=True)
+print(">>> [VERCEL] MODULE LOADING STARTED - LINE 5 <<<", file=__import__('sys').stdout, flush=True)
+
 import sys
 import traceback
 from pathlib import Path
@@ -12,10 +16,11 @@ def log(msg):
     # Also log to stdout as backup
     print(msg, file=sys.stdout, flush=True)
 
-# Log immediately to verify module is being executed
-log(">>> MODULE LOADING STARTED <<<")
+# Log again after imports
+log(">>> MODULE LOADING - AFTER IMPORTS <<<")
 
-# Initialize handler as None - will be set if successful
+# Store initialization error if any
+_init_error = None
 handler = None
 
 try:
@@ -87,6 +92,7 @@ try:
         raise
 
 except Exception as e:
+    _init_error = e
     log("\n" + "=" * 80)
     log("FATAL ERROR during module initialization:")
     log("=" * 80)
@@ -94,6 +100,34 @@ except Exception as e:
     log(f"Error message: {str(e)}")
     log("\nFull traceback:")
     traceback.print_exc(file=sys.stderr)
+    traceback.print_exc(file=sys.stdout)
     log("=" * 80)
-    # Don't exit - let Vercel see the error
-    raise
+    
+    # Try to create a dummy handler that will return an error response
+    # This ensures the module loads successfully so we can see the logs
+    try:
+        from mangum import Mangum
+        from fastapi import FastAPI
+        
+        error_app = FastAPI()
+        
+        @error_app.get("/{path:path}")
+        @error_app.post("/{path:path}")
+        @error_app.put("/{path:path}")
+        @error_app.delete("/{path:path}")
+        async def error_handler():
+            return {
+                "error": "Module initialization failed",
+                "error_type": type(_init_error).__name__,
+                "error_message": str(_init_error)
+            }
+        
+        handler = Mangum(error_app)
+        log("Created error handler - module will load but requests will fail")
+    except Exception as handler_error:
+        log(f"Could not create error handler: {handler_error}")
+        log("Module will fail to load, but logs should be visible above")
+        # Set handler to None - Vercel will fail but we'll have logs
+        handler = None
+    
+    log("=" * 80)
