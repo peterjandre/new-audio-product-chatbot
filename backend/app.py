@@ -7,9 +7,13 @@ information about audio production gear from Gearspace.com.
 
 import os
 import sys
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
+import urllib.parse
+
+import requests
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,43 +59,136 @@ class HealthResponse(BaseModel):
 # Global RAG engine instance (initialized on startup)
 rag_engine: Optional[RAGEngine] = None
 
+# Temporary directory for downloaded files (cleaned up on shutdown)
+_temp_dir: Optional[tempfile.TemporaryDirectory] = None
+
+
+def _is_url(path: str) -> bool:
+    """Check if a path is a URL."""
+    parsed = urllib.parse.urlparse(path)
+    return parsed.scheme in ('http', 'https')
+
+
+def _download_file(url: str, dest_path: Path) -> Path:
+    """Download a file from a URL to a destination path."""
+    print(f"Downloading {url} to {dest_path}...")
+    response = requests.get(url, timeout=300)  # 5 minute timeout for large files
+    response.raise_for_status()
+    
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    with dest_path.open('wb') as f:
+        f.write(response.content)
+    
+    print(f"Downloaded {dest_path.name} ({len(response.content) / 1024 / 1024:.2f} MB)")
+    return dest_path
+
+
+def _resolve_path(path_str: str, temp_dir: Path) -> Path:
+    """
+    Resolve a path string that can be either a URL or local path.
+    If it's a URL, download it to temp_dir. Otherwise, return as Path.
+    """
+    if not path_str:
+        return None
+    
+    if _is_url(path_str):
+        # It's a URL - download it
+        filename = Path(urllib.parse.urlparse(path_str).path).name
+        dest_path = temp_dir / filename
+        if not dest_path.exists():
+            _download_file(path_str, dest_path)
+        return dest_path
+    else:
+        # It's a local path
+        return Path(path_str)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown."""
-    global rag_engine
+    global rag_engine, _temp_dir
     
     # Startup
     try:
-        # Get configuration from environment variables or use defaults
-        # For Vercel, data files should be in the backend/data directory
+        # Create temporary directory for downloaded files (if using Supabase URLs)
+        _temp_dir = tempfile.TemporaryDirectory()
+        temp_dir_path = Path(_temp_dir.name)
+        print(f"Created temporary directory: {temp_dir_path}")
+        
+        # Get configuration from environment variables
+        # Support both local paths and Supabase URLs
         base_dir = Path(__file__).parent
-        index_path = os.getenv("FAISS_INDEX_PATH", str(base_dir / "data" / "faiss_index.index"))
-        metadata_path = os.getenv("FAISS_METADATA_PATH", None)
-        if metadata_path is None:
-            metadata_path = str(base_dir / "data" / "faiss_index_metadata.json")
-            if not Path(metadata_path).exists():
-                metadata_path = None
-        corpus_path = os.getenv("CORPUS_PATH", str(base_dir / "data" / "gearspace_corpus.json"))
+        
+        # Check for Supabase URLs first, then fall back to local paths
+        index_path_env = os.getenv("FAISS_INDEX_URL") or os.getenv("FAISS_INDEX_PATH")
+        if not index_path_env:
+            index_path_env = str(base_dir / "data" / "faiss_index.index")
+        
+        metadata_path_env = os.getenv("FAISS_METADATA_URL") or os.getenv("FAISS_METADATA_PATH")
+        if not metadata_path_env:
+            metadata_path_env = str(base_dir / "data" / "faiss_index_metadata.json")
+        
+        corpus_path_env = os.getenv("CORPUS_URL") or os.getenv("CORPUS_PATH")
+        if not corpus_path_env:
+            corpus_path_env = str(base_dir / "data" / "gearspace_corpus.json")
+        
+        # Resolve paths (download if URLs, use local if paths)
+        index_path = _resolve_path(index_path_env, temp_dir_path)
+        
+        if index_path is None or not index_path.exists():
+            raise FileNotFoundError(f"FAISS index file not found at {index_path_env}")
+        
+        # Resolve metadata path (auto-detect if not provided and using URL)
+        metadata_path = None
+        if metadata_path_env:
+            metadata_path = _resolve_path(metadata_path_env, temp_dir_path)
+        else:
+            # Auto-detect metadata from index path
+            auto_metadata = index_path.parent / f"{index_path.stem}_metadata.json"
+            if auto_metadata.exists():
+                metadata_path = auto_metadata
+            else:
+                # If index was downloaded from URL, try downloading metadata with similar name
+                if _is_url(index_path_env):
+                    # Try constructing metadata URL
+                    metadata_url = index_path_env.replace('.index', '_metadata.json')
+                    try:
+                        metadata_path = _resolve_path(metadata_url, temp_dir_path)
+                    except Exception as e:
+                        print(f"Warning: Could not auto-detect metadata file: {e}")
+        
+        # Resolve corpus path
+        corpus_path = None
+        if corpus_path_env:
+            corpus_path = _resolve_path(corpus_path_env, temp_dir_path)
         
         openai_model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         
         print("Initializing RAG engine...")
+        print(f"  Index path: {index_path}")
+        print(f"  Metadata path: {metadata_path}")
+        print(f"  Corpus path: {corpus_path}")
+        
         rag_engine = RAGEngine(
-            index_path=index_path,
-            metadata_path=metadata_path,
-            corpus_path=corpus_path,
+            index_path=str(index_path),
+            metadata_path=str(metadata_path) if metadata_path else None,
+            corpus_path=str(corpus_path) if corpus_path else None,
             openai_model=openai_model,
         )
         print("RAG engine initialized successfully!")
         
     except Exception as e:
         print(f"Error initializing RAG engine: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         raise
     
     yield
     
-    # Shutdown (if needed, add cleanup code here)
+    # Shutdown - clean up temporary directory
+    if _temp_dir:
+        print("Cleaning up temporary files...")
+        _temp_dir.cleanup()
     print("Shutting down...")
 
 
@@ -136,7 +233,7 @@ async def health_check():
     return HealthResponse(
         status="healthy",
         index_size=rag_engine.faiss_index.index.ntotal if rag_engine else None,
-        generation_provider=rag_engine.generation_provider if rag_engine else None,
+        generation_provider="openai",  # RAG engine uses OpenAI
     )
 
 
