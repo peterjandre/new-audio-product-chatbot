@@ -60,7 +60,8 @@ if (queryForm) {
             const k = parseInt(kSelect.value);
             const temperature = parseFloat(tempSlider.value) / 10;
 
-            const apiUrl = API_BASE_URL || window.location.origin;
+            // Normalize API URL - remove trailing slash to avoid double slashes
+            const apiUrl = (API_BASE_URL || window.location.origin).replace(/\/+$/, '');
             const response = await fetch(`${apiUrl}/query`, {
                 method: 'POST',
                 headers: {
