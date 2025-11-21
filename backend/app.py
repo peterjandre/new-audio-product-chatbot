@@ -26,7 +26,6 @@ if str(scripts_dir) not in sys.path:
 
 from rag_engine import RAGEngine
 
-
 # Pydantic models for request/response
 class QueryRequest(BaseModel):
     """Request model for querying the RAG engine."""
@@ -64,8 +63,8 @@ _rag_engine_error: Optional[str] = None  # Store initialization error
 # Temporary directory for downloaded files (cleaned up on shutdown)
 _temp_dir: Optional[tempfile.TemporaryDirectory] = None
 
-# Detect serverless environment
-_IS_SERVERLESS = os.getenv("VERCEL") is not None or os.getenv("AWS_LAMBDA_FUNCTION_NAME") is not None
+# Detect serverless environment (Vercel)
+_IS_SERVERLESS = os.getenv("VERCEL") is not None
 
 
 def _is_url(path: str) -> bool:
@@ -144,15 +143,15 @@ def _initialize_rag_engine():
         base_dir = Path(__file__).parent
         
         # Check for Supabase URLs first, then fall back to local paths
-        index_path_env = os.getenv("FAISS_INDEX_URL") or os.getenv("FAISS_INDEX_PATH")
+        index_path_env = os.getenv("FAISS_INDEX_URL")
         if not index_path_env:
             index_path_env = str(base_dir / "data" / "faiss_index.index")
         
-        metadata_path_env = os.getenv("FAISS_METADATA_URL") or os.getenv("FAISS_METADATA_PATH")
+        metadata_path_env = os.getenv("FAISS_METADATA_URL")
         if not metadata_path_env:
             metadata_path_env = str(base_dir / "data" / "faiss_index_metadata.json")
         
-        corpus_path_env = os.getenv("CORPUS_URL") or os.getenv("CORPUS_PATH")
+        corpus_path_env = os.getenv("CORPUS_URL")
         if not corpus_path_env:
             corpus_path_env = str(base_dir / "data" / "gearspace_corpus.json")
         
@@ -245,15 +244,15 @@ if _IS_SERVERLESS:
     # Serverless environment - don't use lifespan handler
     print("Running in serverless environment - skipping lifespan handler", file=sys.stderr)
     app = FastAPI(
-        title="Audio Products Chatbot API",
-        description="RAG-powered API for querying information about audio production gear",
+        title="New Audio Products Chatbot API",
+        description="RAG-powered API for querying information about audio production gear released in October and November 2025",
         version="1.0.0",
     )
 else:
     # Local/regular environment - use lifespan handler
     app = FastAPI(
-        title="Audio Products Chatbot API",
-        description="RAG-powered API for querying information about audio production gear",
+        title="New Audio Products Chatbot API",
+        description="RAG-powered API for querying information about audio production gear released in October and November 2025",
         version="1.0.0",
         lifespan=lifespan,
     )
