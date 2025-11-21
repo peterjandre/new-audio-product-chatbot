@@ -186,6 +186,37 @@ main {
     }
 }
 
+.results-header {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.clear-results-btn {
+    padding: 0.5rem 1.5rem;
+    background: var(--surface-light);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.clear-results-btn:hover {
+    background: var(--background);
+    border-color: var(--text-muted);
+    color: var(--text-primary);
+    transform: translateY(-1px);
+}
+
+.clear-results-btn:active {
+    transform: translateY(0);
+}
+
 .question-display {
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
@@ -332,11 +363,29 @@ main {
     text-align: center;
 }
 
-.about-section h3 {
-    font-size: 1.3rem;
-    margin-top: 2rem;
-    margin-bottom: 1rem;
+.about-header {
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    transition: color 0.3s ease;
+}
+
+.about-header:hover {
     color: var(--primary-color);
+}
+
+.accordion-icon {
+    display: inline-block;
+    transition: transform 0.3s ease;
+    font-size: 0.8em;
+    color: var(--primary-color);
+}
+
+.about-header.expanded .accordion-icon {
+    transform: rotate(90deg);
 }
 
 .about-content {
@@ -344,6 +393,26 @@ main {
     margin: 0 auto;
     color: var(--text-secondary);
     line-height: 1.8;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.4s ease, padding 0.4s ease, opacity 0.4s ease;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+}
+
+.about-content.expanded {
+    max-height: 5000px;
+    padding-top: 1.5rem;
+    padding-bottom: 0;
+    opacity: 1;
+}
+
+.about-section h3 {
+    font-size: 1.3rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
+    color: var(--primary-color);
 }
 
 .about-content p {

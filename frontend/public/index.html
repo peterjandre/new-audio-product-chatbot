@@ -49,6 +49,9 @@
             </div>
 
             <div id="resultsSection" class="results-section" style="display: none;">
+                <div class="results-header">
+                    <button type="button" id="clearResultsBtn" class="clear-results-btn">Clear Results</button>
+                </div>
                 <div class="question-display">
                     <h2>Question:</h2>
                     <p id="displayedQuestion"></p>
@@ -74,8 +77,11 @@
         </main>
 
         <footer class="about-section">
-            <h2>About This Project</h2>
-            <div class="about-content">
+            <h2 class="about-header" id="aboutHeader">
+                <span class="accordion-icon">▶</span>
+                About This Project
+            </h2>
+            <div class="about-content" id="aboutContent">
                 <p>
                     This is a Retrieval-Augmented Generation (RAG) chatbot that answers questions about 
                     audio production gear by searching through posts from Gearspace.com.
