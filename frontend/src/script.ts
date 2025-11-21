@@ -31,7 +31,6 @@ const displayedQuestion = document.getElementById('displayedQuestion') as HTMLPa
 const answerContent = document.getElementById('answerContent') as HTMLDivElement;
 const sourcesList = document.getElementById('sourcesList') as HTMLDivElement;
 const errorText = document.getElementById('errorText') as HTMLParagraphElement;
-const clearResultsBtn = document.getElementById('clearResultsBtn') as HTMLButtonElement;
 
 // Temperature slider handler
 if (tempSlider && tempValue) {
@@ -176,18 +175,6 @@ function displayError(message: string): void {
     errorSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function clearResults(): void {
-    if (!resultsSection) return;
-    
-    // Clear the content
-    if (displayedQuestion) displayedQuestion.textContent = '';
-    if (answerContent) answerContent.textContent = '';
-    if (sourcesList) sourcesList.innerHTML = '';
-    
-    // Hide the results section
-    resultsSection.style.display = 'none';
-}
-
 // Allow Enter key to submit (form already handles this, but ensure it works)
 if (questionInput && queryForm) {
     questionInput.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -195,13 +182,6 @@ if (questionInput && queryForm) {
             e.preventDefault();
             queryForm.dispatchEvent(new Event('submit'));
         }
-    });
-}
-
-// Clear Results button functionality
-if (clearResultsBtn) {
-    clearResultsBtn.addEventListener('click', () => {
-        clearResults();
     });
 }
 

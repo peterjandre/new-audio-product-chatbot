@@ -186,37 +186,6 @@ main {
     }
 }
 
-.results-header {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 1.5rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.clear-results-btn {
-    padding: 0.5rem 1.5rem;
-    background: var(--surface-light);
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.clear-results-btn:hover {
-    background: var(--background);
-    border-color: var(--text-muted);
-    color: var(--text-primary);
-    transform: translateY(-1px);
-}
-
-.clear-results-btn:active {
-    transform: translateY(0);
-}
-
 .question-display {
     margin-bottom: 2rem;
     padding-bottom: 1.5rem;
